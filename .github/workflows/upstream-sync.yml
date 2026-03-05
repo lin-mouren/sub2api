@@ -121,10 +121,15 @@ jobs:
           existing_pr="$(get_existing_pr)"
           if [ "${ahead_by}" -eq 0 ]; then
             if [ -n "${existing_pr}" ]; then
-              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" -f state=closed >/dev/null
-              gh api "repos/${GITHUB_REPOSITORY}/issues/${existing_pr}/comments" \
-                -f body="main already contains mirror/upstream-main; closing this sync PR." >/dev/null
-              echo "Closed obsolete sync PR #${existing_pr}"
+              pr_state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" --jq '.state' 2>/dev/null || true)"
+              if [ "${pr_state}" = "open" ]; then
+                gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" -f state=closed >/dev/null
+                gh api "repos/${GITHUB_REPOSITORY}/issues/${existing_pr}/comments" \
+                  -f body="main already contains mirror/upstream-main; closing this sync PR." >/dev/null
+                echo "Closed obsolete sync PR #${existing_pr}"
+              else
+                echo "Sync PR #${existing_pr} is already ${pr_state:-unknown}; skip close."
+              fi
             else
               echo "No sync PR needed: mirror is not ahead of main."
             fi
