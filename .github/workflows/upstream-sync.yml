@@ -54,7 +54,7 @@ jobs:
 
       - name: Upsert sync PR (mirror/upstream-main -> main)
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -69,44 +69,106 @@ jobs:
             exit 0
           fi
 
-          existing_pr="$(gh pr list --state open --base main --head mirror/upstream-main --json number --jq '.[0].number // empty')"
+          get_existing_pr() {
+            gh api "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f state=open \
+              -f base=main \
+              -f head="${GITHUB_REPOSITORY_OWNER}:mirror/upstream-main" \
+              -f per_page=1 \
+              --jq '.[0].number // empty'
+          }
 
-          if git merge-base --is-ancestor origin/mirror/upstream-main origin/main; then
+          compare_endpoint="repos/${GITHUB_REPOSITORY}/compare/main...mirror%2Fupstream-main"
+          compare_tsv=""
+          for attempt in 1 2 3 4 5; do
+            if compare_tsv="$(gh api "${compare_endpoint}" \
+              --jq '[.status, (.ahead_by|tostring), (.behind_by|tostring), (.total_commits|tostring), (.merge_base_commit.sha // ""), (.base_commit.sha // "")] | @tsv' \
+              2>/tmp/upstream-compare.err)"; then
+              break
+            fi
+            echo "compare api not ready, retry ${attempt}/5"
+            sleep 3
+          done
+
+          if [ -z "${compare_tsv}" ]; then
+            echo "::error::failed to read compare(main...mirror/upstream-main) after retries"
+            cat /tmp/upstream-compare.err || true
+            exit 1
+          fi
+
+          IFS=$'\t' read -r compare_status ahead_by behind_by total_commits merge_base_sha base_sha <<<"${compare_tsv}"
+
+          if ! [[ "${ahead_by}" =~ ^[0-9]+$ ]]; then
+            echo "::error::invalid ahead_by from compare api: ${ahead_by}"
+            exit 1
+          fi
+          if ! [[ "${behind_by}" =~ ^[0-9]+$ ]]; then
+            echo "::error::invalid behind_by from compare api: ${behind_by}"
+            exit 1
+          fi
+
+          echo "compare(main...mirror/upstream-main): status=${compare_status} ahead_by=${ahead_by} behind_by=${behind_by} total_commits=${total_commits} merge_base=${merge_base_sha} base=${base_sha}"
+          {
+            echo "### Upstream Sync Compare"
+            echo "- status: ${compare_status}"
+            echo "- ahead_by: ${ahead_by}"
+            echo "- behind_by: ${behind_by}"
+            echo "- total_commits: ${total_commits}"
+            echo "- merge_base: ${merge_base_sha}"
+            echo "- main_base_sha: ${base_sha}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          existing_pr="$(get_existing_pr)"
+          if [ "${ahead_by}" -eq 0 ]; then
             if [ -n "${existing_pr}" ]; then
-              gh pr close "${existing_pr}" --comment "main already contains mirror/upstream-main; closing this sync PR."
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" -f state=closed >/dev/null
+              gh api "repos/${GITHUB_REPOSITORY}/issues/${existing_pr}/comments" \
+                -f body="main already contains mirror/upstream-main; closing this sync PR." >/dev/null
+              echo "Closed obsolete sync PR #${existing_pr}"
+            else
+              echo "No sync PR needed: mirror is not ahead of main."
             fi
             exit 0
           fi
 
-          if [ -n "${existing_pr}" ]; then
-            echo "Open sync PR already exists: #${existing_pr}"
-            exit 0
-          fi
-
-          set +e
-          pr_create_output="$(gh pr create \
-            --base main \
-            --head mirror/upstream-main \
-            --title "chore(upstream): sync Wei-Shaw/sub2api main" \
-            --body "Automated upstream sync PR from mirror/upstream-main to main." 2>&1)"
-          pr_create_status=$?
-          set -e
-
-          if [ "${pr_create_status}" -ne 0 ]; then
-            if echo "${pr_create_output}" | grep -q "No commits between"; then
-              echo "No commits between mirror/upstream-main and main, nothing to open."
-              exit 0
+          pr_number="${existing_pr}"
+          if [ -z "${pr_number}" ]; then
+            if pr_number="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f title="chore(upstream): sync Wei-Shaw/sub2api main" \
+              -f head="mirror/upstream-main" \
+              -f base="main" \
+              -f body="Automated upstream sync PR from mirror/upstream-main to main." \
+              --jq '.number' 2>/tmp/upstream-pr-create.err)"; then
+              echo "Created sync PR #${pr_number}"
+            else
+              if grep -q "A pull request already exists" /tmp/upstream-pr-create.err; then
+                pr_number="$(get_existing_pr)"
+                echo "Detected existing sync PR #${pr_number} after create race."
+              else
+                echo "::error::failed to create sync PR"
+                cat /tmp/upstream-pr-create.err || true
+                exit 1
+              fi
             fi
-            echo "${pr_create_output}"
-            exit "${pr_create_status}"
+          else
+            echo "Reusing open sync PR #${pr_number}"
           fi
 
-          echo "${pr_create_output}"
+          if [ "${ahead_by}" -gt 0 ] && [ -z "${pr_number}" ]; then
+            echo "::error::mirror is ahead of main (ahead_by=${ahead_by}) but no sync PR exists"
+            exit 1
+          fi
+
+          echo "sync_pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "- sync_pr: #${pr_number}"
+            echo "- action: upserted"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Notify on sync failure
         if: ${{ failure() }}
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
