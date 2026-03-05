@@ -62,3 +62,9 @@ Last updated: 2026-03-05
 - Dependabot security updates must stay enabled at repository level.
 - Triage and remediation SLA is defined in:
   - `docs/dependency-triage-sla.md`
+
+## Execution Assets
+- Production env audit template:
+  - `deploy/.env.production.ready.example`
+- Global UAT execution plan:
+  - `docs/global-uat-execution-plan.md`

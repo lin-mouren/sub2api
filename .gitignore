@@ -129,6 +129,7 @@ vite.config.js
 docs/*
 !docs/production-readiness-checklist.md
 !docs/dependency-triage-sla.md
+!docs/global-uat-execution-plan.md
 .serena/
 .codex/
 frontend/coverage/
