@@ -33,7 +33,10 @@ jobs:
           git remote add upstream https://github.com/Wei-Shaw/sub2api.git 2>/dev/null || \
             git remote set-url upstream https://github.com/Wei-Shaw/sub2api.git
           git fetch upstream main --prune
-          git fetch origin main mirror/upstream-main --prune || true
+          git fetch origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/mirror/upstream-main:refs/remotes/origin/mirror/upstream-main \
+            --prune || true
 
       - name: Fast-forward mirror/upstream-main
         shell: bash
@@ -56,7 +59,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          git fetch origin main mirror/upstream-main --prune || true
+          git fetch origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/mirror/upstream-main:refs/remotes/origin/mirror/upstream-main \
+            --prune || true
 
           if ! git show-ref --verify --quiet "refs/remotes/origin/mirror/upstream-main"; then
             echo "mirror/upstream-main not found on origin, skipping PR upsert."
@@ -77,8 +83,22 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
+          set +e
+          pr_create_output="$(gh pr create \
             --base main \
             --head mirror/upstream-main \
             --title "chore(upstream): sync Wei-Shaw/sub2api main" \
-            --body "Automated upstream sync PR from mirror/upstream-main to main."
+            --body "Automated upstream sync PR from mirror/upstream-main to main." 2>&1)"
+          pr_create_status=$?
+          set -e
+
+          if [ "${pr_create_status}" -ne 0 ]; then
+            if echo "${pr_create_output}" | grep -q "No commits between"; then
+              echo "No commits between mirror/upstream-main and main, nothing to open."
+              exit 0
+            fi
+            echo "${pr_create_output}"
+            exit "${pr_create_status}"
+          fi
+
+          echo "${pr_create_output}"
