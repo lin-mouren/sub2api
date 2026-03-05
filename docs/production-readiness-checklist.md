@@ -17,13 +17,13 @@ Last updated: 2026-03-06
 - [x] Required status checks are strict (branch must be up to date before merge).
 - [x] At least one origin release tag pipeline completed successfully with traceable artifacts.
 - [x] GitHub environments `staging` and `production` exist with reviewer protection.
-- [ ] Production secret baseline is frozen and approved:
-  - [ ] `POSTGRES_PASSWORD`
-  - [ ] `JWT_SECRET`
-  - [ ] `TOTP_ENCRYPTION_KEY`
-  - [ ] `SECURITY_URL_ALLOWLIST_ENABLED=true`
-  - [ ] `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
-  - [ ] `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
+- [x] Production secret baseline is frozen and approved:
+  - [x] `POSTGRES_PASSWORD`
+  - [x] `JWT_SECRET`
+  - [x] `TOTP_ENCRYPTION_KEY`
+  - [x] `SECURITY_URL_ALLOWLIST_ENABLED=true`
+  - [x] `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
+  - [x] `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
 
 ## P1 Recommended Before Global UAT
 - [x] Mirror branch CI noise strategy documented (accepted or mitigated).
@@ -71,7 +71,7 @@ Last updated: 2026-03-06
 
 ## 2026-03-06 Execution Evidence
 - Upstream sync contract snapshot:
-  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 30 }`
+  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 38 }`
   - open sync PRs = `[]`
   - latest successful run: `https://github.com/lin-mouren/sub2api/actions/runs/22725274521`
 - Branch governance:
@@ -80,7 +80,10 @@ Last updated: 2026-03-06
   - repo merge settings: `allow_merge_commit=true`, `allow_squash_merge=false`, `allow_rebase_merge=false`
 - Release/deployment evidence:
   - release tag: `v0.1.92-rc.1`
-  - deployment marker record: `id=3990391079`, `environment=staging`, latest status=`success`
+  - staging deploy-marker run: `https://github.com/lin-mouren/sub2api/actions/runs/22727966095`
+  - production deploy-marker run: `https://github.com/lin-mouren/sub2api/actions/runs/22730916048`
+  - staging deployment marker: `id=3991057668`, latest status=`success`
+  - production deployment marker: `id=3991087679`, includes `success` status in run evidence
 - Staging environment baseline injected:
   - secrets: `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`
   - vars:
@@ -88,11 +91,7 @@ Last updated: 2026-03-06
     - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
     - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
 - Operational blocker noted:
-  - GitHub `workflow_dispatch` endpoint returned HTTP 500 repeatedly during this window, so deployment marker was written via REST fallback.
+  - `workflow_dispatch` endpoint had intermittent HTTP 500 during this window; `repository_dispatch` path validated and succeeded.
 
-## Remaining Go-Live Blocker (Single Item)
-- Inject production environment secrets/variables with the same baseline and run one production marker validation:
-  - `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`
-  - `SECURITY_URL_ALLOWLIST_ENABLED=true`
-  - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
-  - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
+## Remaining Go-Live Blocker
+- None at governance/release/deployment baseline layer.
