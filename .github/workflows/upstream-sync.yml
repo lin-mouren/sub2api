@@ -102,3 +102,32 @@ jobs:
           fi
 
           echo "${pr_create_output}"
+
+      - name: Notify on sync failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="[upstream-sync] workflow failures"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          message="Workflow run failed.
+
+          - Repository: ${GITHUB_REPOSITORY}
+          - Branch: ${GITHUB_REF_NAME}
+          - Trigger: ${GITHUB_EVENT_NAME}
+          - Run: ${run_url}"
+
+          existing_issue="$(gh issue list \
+            --state open \
+            --search "\"${title}\" in:title" \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "${existing_issue}" ]; then
+            gh issue comment "${existing_issue}" --body "${message}"
+            exit 0
+          fi
+
+          gh issue create --title "${title}" --body "${message}"
