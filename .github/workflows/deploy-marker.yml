@@ -16,24 +16,27 @@ on:
         required: true
         default: v0.1.92-rc.1
         type: string
+  repository_dispatch:
+    types:
+      - deploy-marker
 
 permissions:
   contents: read
   deployments: write
 
 concurrency:
-  group: deploy-marker-${{ inputs.environment }}-${{ inputs.tag }}
+  group: deploy-marker-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   marker:
-    name: Deploy marker (${{ inputs.environment }}, ${{ inputs.tag }})
+    name: Deploy marker (${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}, ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }})
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_ENV: ${{ inputs.environment }}
-      RELEASE_TAG: ${{ inputs.tag }}
+      TARGET_ENV: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}
+      RELEASE_TAG: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -42,6 +45,23 @@ jobs:
       SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: ${{ vars.SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP }}
       SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: ${{ vars.SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS }}
     steps:
+      - name: Validate trigger payload
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${TARGET_ENV}" in
+            staging|production) ;;
+            *)
+              echo "::error::invalid environment: ${TARGET_ENV}"
+              exit 1
+              ;;
+          esac
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "::error::empty release tag"
+            exit 1
+          fi
+
       - name: Validate release and tag
         id: validate_release
         shell: bash
