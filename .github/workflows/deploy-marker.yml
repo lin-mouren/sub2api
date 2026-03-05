@@ -1,6 +1,11 @@
 name: Deploy Marker
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-marker.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -25,18 +30,18 @@ permissions:
   deployments: write
 
 concurrency:
-  group: deploy-marker-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }}
+  group: deploy-marker-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'staging' }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name == 'repository_dispatch' && github.event.client_payload.tag || 'v0.1.92-rc.1' }}
   cancel-in-progress: false
 
 jobs:
   marker:
-    name: Deploy marker (${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}, ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }})
+    name: Deploy marker (${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'staging' }}, ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name == 'repository_dispatch' && github.event.client_payload.tag || 'v0.1.92-rc.1' }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'staging' }}
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_ENV: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || inputs.environment }}
-      RELEASE_TAG: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || inputs.tag }}
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'staging' }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name == 'repository_dispatch' && github.event.client_payload.tag || 'v0.1.92-rc.1' }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
