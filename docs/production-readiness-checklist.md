@@ -49,3 +49,15 @@ Last updated: 2026-03-05
 - Keep `upstream` push URL disabled (`DISABLE`).
 - Never resolve conflicts on `mirror/*`.
 - Use `git config --global rerere.enabled true` to reduce repeat conflict cost.
+
+## Mirror CI Noise Policy
+- Decision: accept mirror-branch CI noise as a known behavior.
+- Reason: `mirror/upstream-main` tracks upstream commits; workflow definitions on mirror are inherited from upstream and can still run even if `main` has `branches-ignore: mirror/**`.
+- Guardrail:
+  - treat mirror branch runs as informational,
+  - use `Upstream Sync (mirror + PR)` + `main` PR checks as merge gates.
+
+## Dependency Governance
+- Dependabot security updates must stay enabled at repository level.
+- Triage and remediation SLA is defined in:
+  - `docs/dependency-triage-sla.md`
