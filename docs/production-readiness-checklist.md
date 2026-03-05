@@ -26,10 +26,11 @@ Last updated: 2026-03-05
   - [ ] `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
 
 ## P1 Recommended Before Global UAT
-- [ ] Mirror branch CI noise strategy documented (accepted or mitigated).
+- [x] Mirror branch CI noise strategy documented (accepted or mitigated).
 - [ ] `UPSTREAM_SYNC_DEPLOY_KEY` rotated with owner + expiry policy.
-- [ ] PAT minimized/expired if used; prefer `GITHUB_TOKEN`.
-- [ ] Dependabot security updates enabled and triage SLA defined.
+- [x] PAT minimized in workflow; prefer `GITHUB_TOKEN`.
+- [ ] Residual `UPSTREAM_SYNC_TOKEN` secret removed (if no longer required).
+- [x] Dependabot security updates enabled and triage SLA defined.
 
 ## Validation Scenarios
 1. Upstream new commit, no conflict.
