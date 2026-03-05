@@ -70,10 +70,7 @@ jobs:
           fi
 
           get_existing_pr() {
-            gh api "repos/${GITHUB_REPOSITORY}/pulls" \
-              -f state=open \
-              -f base=main \
-              -f per_page=100 \
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
               --jq '.[] | select(.head.ref=="mirror/upstream-main") | .number' | head -n 1
           }
 
