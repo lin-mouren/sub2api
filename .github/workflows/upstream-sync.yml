@@ -73,9 +73,8 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/pulls" \
               -f state=open \
               -f base=main \
-              -f head="${GITHUB_REPOSITORY_OWNER}:mirror/upstream-main" \
-              -f per_page=1 \
-              --jq '.[0].number // empty'
+              -f per_page=100 \
+              --jq '.[] | select(.head.ref=="mirror/upstream-main") | .number' | head -n 1
           }
 
           compare_endpoint="repos/${GITHUB_REPOSITORY}/compare/main...mirror%2Fupstream-main"
