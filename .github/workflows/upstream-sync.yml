@@ -54,7 +54,7 @@ jobs:
 
       - name: Upsert sync PR (mirror/upstream-main -> main)
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -169,7 +169,7 @@ jobs:
       - name: Notify on sync failure
         if: ${{ failure() }}
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
