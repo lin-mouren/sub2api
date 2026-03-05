@@ -1,0 +1,83 @@
+name: Upstream Sync (mirror + PR)
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream and origin refs
+        run: |
+          git remote add upstream https://github.com/Wei-Shaw/sub2api.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/Wei-Shaw/sub2api.git
+          git fetch upstream main --prune
+          git fetch origin main mirror/upstream-main --prune || true
+
+      - name: Fast-forward mirror/upstream-main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git show-ref --verify --quiet "refs/remotes/origin/mirror/upstream-main"; then
+            git checkout -B mirror/upstream-main origin/mirror/upstream-main
+          else
+            git checkout -B mirror/upstream-main upstream/main
+          fi
+
+          git merge --ff-only upstream/main
+          git push origin HEAD:refs/heads/mirror/upstream-main
+
+      - name: Upsert sync PR (mirror/upstream-main -> main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main mirror/upstream-main --prune || true
+
+          if ! git show-ref --verify --quiet "refs/remotes/origin/mirror/upstream-main"; then
+            echo "mirror/upstream-main not found on origin, skipping PR upsert."
+            exit 0
+          fi
+
+          existing_pr="$(gh pr list --state open --base main --head mirror/upstream-main --json number --jq '.[0].number // empty')"
+
+          if git merge-base --is-ancestor origin/mirror/upstream-main origin/main; then
+            if [ -n "${existing_pr}" ]; then
+              gh pr close "${existing_pr}" --comment "main already contains mirror/upstream-main; closing this sync PR."
+            fi
+            exit 0
+          fi
+
+          if [ -n "${existing_pr}" ]; then
+            echo "Open sync PR already exists: #${existing_pr}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head mirror/upstream-main \
+            --title "chore(upstream): sync Wei-Shaw/sub2api main" \
+            --body "Automated upstream sync PR from mirror/upstream-main to main."
