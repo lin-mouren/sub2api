@@ -1,0 +1,202 @@
+name: Deploy Marker
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      tag:
+        description: Release tag to mark (must exist)
+        required: true
+        default: v0.1.92-rc.1
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-marker-${{ inputs.environment }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  marker:
+    name: Deploy marker (${{ inputs.environment }}, ${{ inputs.tag }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_ENV: ${{ inputs.environment }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
+      SECURITY_URL_ALLOWLIST_ENABLED: ${{ vars.SECURITY_URL_ALLOWLIST_ENABLED }}
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: ${{ vars.SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP }}
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: ${{ vars.SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS }}
+    steps:
+      - name: Validate release and tag
+        id: validate_release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_url="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+              --jq '.html_url'
+          )"
+          target_commit="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" \
+              --jq '.sha'
+          )"
+
+          if [ -z "${release_url}" ] || [ -z "${target_commit}" ]; then
+            echo "::error::unable to resolve release/tag for ${RELEASE_TAG}"
+            exit 1
+          fi
+
+          echo "release_url=${release_url}" >> "${GITHUB_OUTPUT}"
+          echo "target_commit=${target_commit}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### Deploy Marker Input"
+            echo "- environment: ${TARGET_ENV}"
+            echo "- tag: ${RELEASE_TAG}"
+            echo "- release: ${release_url}"
+            echo "- target_commit: ${target_commit}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Create deployment marker
+        id: create_deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${TARGET_ENV}" = "production" ]; then
+            production_environment=true
+          else
+            production_environment=false
+          fi
+
+          payload="$(
+            jq -n \
+              --arg ref "${RELEASE_TAG}" \
+              --arg environment "${TARGET_ENV}" \
+              --arg description "Deploy marker for ${TARGET_ENV} (${RELEASE_TAG})" \
+              --argjson production_environment "${production_environment}" \
+              '{
+                ref: $ref,
+                environment: $environment,
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                transient_environment: false,
+                production_environment: $production_environment
+              }'
+          )"
+          echo "${payload}" >/tmp/deploy-marker-payload.json
+
+          deployment_id="$(
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/deployments" \
+              --input /tmp/deploy-marker-payload.json \
+              --jq '.id'
+          )"
+
+          if [ -z "${deployment_id}" ]; then
+            echo "::error::failed to create deployment"
+            exit 1
+          fi
+
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "- deployment_id: ${deployment_id}"
+            echo "- status: created"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Mark deployment in progress
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/deployments/${{ steps.create_deployment.outputs.deployment_id }}/statuses" \
+            -f state=in_progress \
+            -f log_url="${RUN_URL}" \
+            -f description="Deployment marker checks running" >/dev/null
+
+      - name: Validate production baseline
+        id: validate_baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_non_empty() {
+            key="$1"
+            val="$2"
+            if [ -z "${val}" ]; then
+              echo "::error::${key} is empty"
+              exit 1
+            fi
+          }
+
+          check_exact() {
+            key="$1"
+            val="$2"
+            expected="$3"
+            if [ "${val}" != "${expected}" ]; then
+              echo "::error::${key} expected '${expected}' but got '${val}'"
+              exit 1
+            fi
+          }
+
+          check_non_empty "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD}"
+          check_non_empty "JWT_SECRET" "${JWT_SECRET}"
+          check_non_empty "TOTP_ENCRYPTION_KEY" "${TOTP_ENCRYPTION_KEY}"
+
+          check_exact "SECURITY_URL_ALLOWLIST_ENABLED" "${SECURITY_URL_ALLOWLIST_ENABLED}" "true"
+          check_exact "SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP" "${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP}" "false"
+          check_exact "SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS" "${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS}" "false"
+
+          short_sha() {
+            printf '%s' "$1" | sha256sum | awk '{print $1}' | cut -c1-12
+          }
+
+          {
+            echo "### Baseline Validation"
+            echo "- POSTGRES_PASSWORD: set (len=${#POSTGRES_PASSWORD}, sha12=$(short_sha "${POSTGRES_PASSWORD}"))"
+            echo "- JWT_SECRET: set (len=${#JWT_SECRET}, sha12=$(short_sha "${JWT_SECRET}"))"
+            echo "- TOTP_ENCRYPTION_KEY: set (len=${#TOTP_ENCRYPTION_KEY}, sha12=$(short_sha "${TOTP_ENCRYPTION_KEY}"))"
+            echo "- SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED}"
+            echo "- SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP}"
+            echo "- SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Mark deployment success
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/deployments/${{ steps.create_deployment.outputs.deployment_id }}/statuses" \
+            -f state=success \
+            -f log_url="${RUN_URL}" \
+            -f description="Deploy marker checks passed" >/dev/null
+
+      - name: Mark deployment failure
+        if: ${{ failure() && steps.create_deployment.outputs.deployment_id != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/deployments/${{ steps.create_deployment.outputs.deployment_id }}/statuses" \
+            -f state=failure \
+            -f log_url="${RUN_URL}" \
+            -f description="Deploy marker checks failed" >/dev/null
