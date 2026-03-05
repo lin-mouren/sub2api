@@ -1,6 +1,6 @@
 # SUB2api Production Readiness Checklist
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Scope
 - Deployment model: Docker Compose (`deploy/docker-compose.local.yml`) + reverse proxy TLS.
@@ -9,14 +9,14 @@ Last updated: 2026-03-05
 - Out of scope for production sign-off: Sora capability (do not use as go-live gate).
 
 ## P0 Go/No-Go Gates
-- [ ] Upstream sync automation uses compare-first logic and cannot silently skip PR creation.
-- [ ] If `mirror` is ahead of `main`, PR `mirror/upstream-main -> main` is auto-created/reused.
-- [ ] If `main` already contains `mirror`, stale sync PR is auto-closed.
-- [ ] `main` branch protection requires PR, requires status checks, blocks force-push/delete.
-- [ ] Required checks for `main`: `test`, `golangci-lint`, `backend-security`, `frontend-security`.
-- [ ] Required status checks are strict (branch must be up to date before merge).
-- [ ] At least one origin release tag pipeline completed successfully with traceable artifacts.
-- [ ] GitHub environments `staging` and `production` exist with reviewer protection.
+- [x] Upstream sync automation uses compare-first logic and cannot silently skip PR creation.
+- [x] If `mirror` is ahead of `main`, PR `mirror/upstream-main -> main` is auto-created/reused.
+- [x] If `main` already contains `mirror`, stale sync PR is auto-closed.
+- [x] `main` branch protection requires PR, requires status checks, blocks force-push/delete.
+- [x] Required checks for `main`: `test`, `golangci-lint`, `backend-security`, `frontend-security`.
+- [x] Required status checks are strict (branch must be up to date before merge).
+- [x] At least one origin release tag pipeline completed successfully with traceable artifacts.
+- [x] GitHub environments `staging` and `production` exist with reviewer protection.
 - [ ] Production secret baseline is frozen and approved:
   - [ ] `POSTGRES_PASSWORD`
   - [ ] `JWT_SECRET`
@@ -27,9 +27,9 @@ Last updated: 2026-03-05
 
 ## P1 Recommended Before Global UAT
 - [x] Mirror branch CI noise strategy documented (accepted or mitigated).
-- [ ] `UPSTREAM_SYNC_DEPLOY_KEY` rotated with owner + expiry policy.
+- [x] `UPSTREAM_SYNC_DEPLOY_KEY` rotated with owner + expiry policy.
 - [x] PAT minimized in workflow; prefer `GITHUB_TOKEN`.
-- [ ] Residual `UPSTREAM_SYNC_TOKEN` secret removed (if no longer required).
+- [x] Residual `UPSTREAM_SYNC_TOKEN` secret removed (if no longer required).
 - [x] Dependabot security updates enabled and triage SLA defined.
 
 ## Validation Scenarios
@@ -68,3 +68,31 @@ Last updated: 2026-03-05
   - `deploy/.env.production.ready.example`
 - Global UAT execution plan:
   - `docs/global-uat-execution-plan.md`
+
+## 2026-03-06 Execution Evidence
+- Upstream sync contract snapshot:
+  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 30 }`
+  - open sync PRs = `[]`
+  - latest successful run: `https://github.com/lin-mouren/sub2api/actions/runs/22725274521`
+- Branch governance:
+  - `protect-main` strict checks: enabled
+  - required contexts: `test`, `golangci-lint`, `backend-security`, `frontend-security`
+  - repo merge settings: `allow_merge_commit=true`, `allow_squash_merge=false`, `allow_rebase_merge=false`
+- Release/deployment evidence:
+  - release tag: `v0.1.92-rc.1`
+  - deployment marker record: `id=3990391079`, `environment=staging`, latest status=`success`
+- Staging environment baseline injected:
+  - secrets: `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`
+  - vars:
+    - `SECURITY_URL_ALLOWLIST_ENABLED=true`
+    - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
+    - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
+- Operational blocker noted:
+  - GitHub `workflow_dispatch` endpoint returned HTTP 500 repeatedly during this window, so deployment marker was written via REST fallback.
+
+## Remaining Go-Live Blocker (Single Item)
+- Inject production environment secrets/variables with the same baseline and run one production marker validation:
+  - `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`
+  - `SECURITY_URL_ALLOWLIST_ENABLED=true`
+  - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
+  - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
