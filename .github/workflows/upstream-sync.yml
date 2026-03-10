@@ -49,6 +49,32 @@ jobs:
             git checkout -B mirror/upstream-main upstream/main
           fi
 
+          if git merge-base --is-ancestor HEAD upstream/main; then
+            echo "mirror/upstream-main can be fast-forwarded to upstream/main"
+          elif git merge-base --is-ancestor upstream/main HEAD; then
+            echo "::error::origin/mirror/upstream-main contains commits that are not in upstream/main; mirror branch is polluted and requires break-glass realignment."
+            echo "Mirror-only commits:"
+            git log --oneline upstream/main..HEAD | sed -n '1,20p'
+            {
+              echo "### Mirror Sync Blocked"
+              echo "- state: polluted"
+              echo "- reason: origin/mirror/upstream-main is ahead of upstream/main"
+              echo "- required_action: break-glass realignment using force-with-lease outside automation"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          else
+            echo "::error::origin/mirror/upstream-main and upstream/main have diverged; manual break-glass realignment is required."
+            echo "Divergence summary:"
+            git log --oneline --left-right --cherry-pick HEAD...upstream/main | sed -n '1,40p'
+            {
+              echo "### Mirror Sync Blocked"
+              echo "- state: diverged"
+              echo "- reason: origin/mirror/upstream-main and upstream/main are not in a fast-forward relationship"
+              echo "- required_action: inspect history and realign mirror manually"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+
           git merge --ff-only upstream/main
           git push origin HEAD:refs/heads/mirror/upstream-main
 
