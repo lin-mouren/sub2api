@@ -2,8 +2,6 @@ name: Security Scan
 
 on:
   push:
-    branches-ignore:
-      - mirror/**
   pull_request:
   schedule:
     - cron: '0 3 * * 1'
@@ -25,7 +23,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.25.8'
+          go version | grep -q 'go1.26.1'
       - name: Run govulncheck
         working-directory: backend
         run: |

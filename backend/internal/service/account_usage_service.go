@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand/v2"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 )
 
 type UsageLogRepository interface {
@@ -70,8 +74,10 @@ type accountWindowStatsBatchReader interface {
 }
 
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
+// 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
 	response  *ClaudeUsageResponse
+	err       error // 非 nil 表示缓存的错误（负缓存）
 	timestamp time.Time
 }
 
@@ -89,14 +95,17 @@ type antigravityUsageCache struct {
 
 const (
 	apiCacheTTL         = 3 * time.Minute
+	apiErrorCacheTTL    = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	apiQueryMaxJitter   = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL = 1 * time.Minute
 )
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache         sync.Map // accountID -> *apiUsageCache
-	windowStatsCache sync.Map // accountID -> *windowStatsCache
-	antigravityCache sync.Map // accountID -> *antigravityUsageCache
+	apiCache         sync.Map           // accountID -> *apiUsageCache
+	windowStatsCache sync.Map           // accountID -> *windowStatsCache
+	antigravityCache sync.Map           // accountID -> *antigravityUsageCache
+	apiFlight        singleflight.Group // 防止同一账号的并发请求击穿缓存
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -224,6 +233,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		usage, err := s.getOpenAIUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
 	if account.Platform == PlatformGemini {
 		usage, err := s.getGeminiUsage(ctx, account)
 		if err == nil {
@@ -245,24 +262,65 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 	if account.CanGetUsage() {
 		var apiResp *ClaudeUsageResponse
 
-		// 1. 检查 API 缓存（10 分钟）
+		// 1. 检查缓存（成功响应 3 分钟 / 错误响应 1 分钟）
 		if cached, ok := s.cache.apiCache.Load(accountID); ok {
-			if cache, ok := cached.(*apiUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
-				apiResp = cache.response
+			if cache, ok := cached.(*apiUsageCache); ok {
+				age := time.Since(cache.timestamp)
+				if cache.err != nil && age < apiErrorCacheTTL {
+					// 负缓存命中：返回缓存的错误，避免重试风暴
+					return nil, cache.err
+				}
+				if cache.response != nil && age < apiCacheTTL {
+					apiResp = cache.response
+				}
 			}
 		}
 
-		// 2. 如果没有缓存，从 API 获取
+		// 2. 如果没有有效缓存，通过 singleflight 从 API 获取（防止并发击穿）
 		if apiResp == nil {
-			apiResp, err = s.fetchOAuthUsageRaw(ctx, account)
-			if err != nil {
-				return nil, err
+			// 随机延迟：打散多账号并发请求，避免同一时刻大量相同 TLS 指纹请求
+			// 触发上游反滥用检测。延迟范围 0~800ms，仅在缓存未命中时生效。
+			jitter := time.Duration(rand.Int64N(int64(apiQueryMaxJitter)))
+			select {
+			case <-time.After(jitter):
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			}
-			// 缓存 API 响应
-			s.cache.apiCache.Store(accountID, &apiUsageCache{
-				response:  apiResp,
-				timestamp: time.Now(),
+
+			flightKey := fmt.Sprintf("usage:%d", accountID)
+			result, flightErr, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
+				// 再次检查缓存（可能在等待 singleflight 期间被其他请求填充）
+				if cached, ok := s.cache.apiCache.Load(accountID); ok {
+					if cache, ok := cached.(*apiUsageCache); ok {
+						age := time.Since(cache.timestamp)
+						if cache.err != nil && age < apiErrorCacheTTL {
+							return nil, cache.err
+						}
+						if cache.response != nil && age < apiCacheTTL {
+							return cache.response, nil
+						}
+					}
+				}
+				resp, fetchErr := s.fetchOAuthUsageRaw(ctx, account)
+				if fetchErr != nil {
+					// 负缓存：缓存错误响应，防止后续请求重复触发 429
+					s.cache.apiCache.Store(accountID, &apiUsageCache{
+						err:       fetchErr,
+						timestamp: time.Now(),
+					})
+					return nil, fetchErr
+				}
+				// 缓存成功响应
+				s.cache.apiCache.Store(accountID, &apiUsageCache{
+					response:  resp,
+					timestamp: time.Now(),
+				})
+				return resp, nil
 			})
+			if flightErr != nil {
+				return nil, flightErr
+			}
+			apiResp, _ = result.(*ClaudeUsageResponse)
 		}
 
 		// 3. 构建 UsageInfo（每次都重新计算 RemainingSeconds）
@@ -286,6 +344,77 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 
 	// API Key账号不支持usage查询
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
+}
+
+func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	now := time.Now()
+	usage := &UsageInfo{UpdatedAt: &now}
+
+	if account == nil {
+		return usage, nil
+	}
+	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, account, now)
+
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
+	}
+
+	if s.usageLogRepo == nil {
+		return usage, nil
+	}
+
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
+		windowStats := windowStatsFromAccountStats(stats)
+		if hasMeaningfulWindowStats(windowStats) {
+			if usage.FiveHour == nil {
+				usage.FiveHour = &UsageProgress{Utilization: 0}
+			}
+			usage.FiveHour.WindowStats = windowStats
+		}
+	}
+
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
+		windowStats := windowStatsFromAccountStats(stats)
+		if hasMeaningfulWindowStats(windowStats) {
+			if usage.SevenDay == nil {
+				usage.SevenDay = &UsageProgress{Utilization: 0}
+			}
+			usage.SevenDay.WindowStats = windowStats
+		}
+	}
+
+	return usage, nil
+}
+
+func extractOpenAICodexProbeUpdates(resp *http.Response) (map[string]any, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+		updates := buildCodexUsageExtraUpdates(snapshot, time.Now())
+		if len(updates) > 0 {
+			return updates, nil
+		}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
+	}
+	return nil, nil
+}
+
+func mergeAccountExtra(account *Account, updates map[string]any) {
+	if account == nil || len(updates) == 0 {
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any, len(updates))
+	}
+	for k, v := range updates {
+		account.Extra[k] = v
+	}
 }
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -519,6 +648,72 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 	}
 }
 
+func hasMeaningfulWindowStats(stats *WindowStats) bool {
+	if stats == nil {
+		return false
+	}
+	return stats.Requests > 0 || stats.Tokens > 0 || stats.Cost > 0 || stats.StandardCost > 0 || stats.UserCost > 0
+}
+
+func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
+	if len(extra) == 0 {
+		return nil
+	}
+
+	var (
+		usedPercentKey string
+		resetAfterKey  string
+		resetAtKey     string
+	)
+
+	switch window {
+	case "5h":
+		usedPercentKey = "codex_5h_used_percent"
+		resetAfterKey = "codex_5h_reset_after_seconds"
+		resetAtKey = "codex_5h_reset_at"
+	case "7d":
+		usedPercentKey = "codex_7d_used_percent"
+		resetAfterKey = "codex_7d_reset_after_seconds"
+		resetAtKey = "codex_7d_reset_at"
+	default:
+		return nil
+	}
+
+	usedRaw, ok := extra[usedPercentKey]
+	if !ok {
+		return nil
+	}
+
+	progress := &UsageProgress{Utilization: parseExtraFloat64(usedRaw)}
+	if resetAtRaw, ok := extra[resetAtKey]; ok {
+		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			if progress.RemainingSeconds < 0 {
+				progress.RemainingSeconds = 0
+			}
+		}
+	}
+	if progress.ResetsAt == nil {
+		if resetAfterSeconds := parseExtraInt(extra[resetAfterKey]); resetAfterSeconds > 0 {
+			base := now
+			if updatedAtRaw, ok := extra["codex_usage_updated_at"]; ok {
+				if updatedAt, err := parseTime(fmt.Sprint(updatedAtRaw)); err == nil {
+					base = updatedAt
+				}
+			}
+			resetAt := base.Add(time.Duration(resetAfterSeconds) * time.Second)
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			if progress.RemainingSeconds < 0 {
+				progress.RemainingSeconds = 0
+			}
+		}
+	}
+
+	return progress
+}
+
 func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {
 	stats, err := s.usageLogRepo.GetAccountUsageStats(ctx, accountID, startTime, endTime)
 	if err != nil {
@@ -666,15 +861,30 @@ func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageIn
 			remaining = 0
 		}
 
-		// 根据状态估算使用率 (百分比形式，100 = 100%)
+		// 优先使用响应头中存储的真实 utilization 值（0-1 小数，转为 0-100 百分比）
 		var utilization float64
-		switch account.SessionWindowStatus {
-		case "rejected":
-			utilization = 100.0
-		case "allowed_warning":
-			utilization = 80.0
-		default:
-			utilization = 0.0
+		var found bool
+		if stored, ok := account.Extra["session_window_utilization"]; ok {
+			switch v := stored.(type) {
+			case float64:
+				utilization = v * 100
+				found = true
+			case json.Number:
+				if f, err := v.Float64(); err == nil {
+					utilization = f * 100
+					found = true
+				}
+			}
+		}
+
+		// 如果没有存储的 utilization，回退到状态估算
+		if !found {
+			switch account.SessionWindowStatus {
+			case "rejected":
+				utilization = 100.0
+			case "allowed_warning":
+				utilization = 80.0
+			}
 		}
 
 		info.FiveHour = &UsageProgress{
