@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ArtifactEnvelope",
+  "type": "object",
+  "required": [
+    "task_id",
+    "agent_role",
+    "tool_name",
+    "args_summary",
+    "worktree",
+    "started_at",
+    "ended_at",
+    "result",
+    "evidence_paths"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "agent_role": {
+      "type": "string"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "args_summary": {
+      "type": "string"
+    },
+    "worktree": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "done",
+        "verified",
+        "blocked",
+        "manual_blocker",
+        "failed"
+      ]
+    },
+    "evidence_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

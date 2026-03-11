@@ -1,0 +1,25 @@
+{
+  "github": {
+    "repository": "lin-mouren/sub2api",
+    "staging_environment": "staging",
+    "production_environment": "production"
+  },
+  "deployment": {
+    "compose_file": "deploy/docker-compose.local.yml",
+    "env_file": "deploy/.env",
+    "working_directory": "deploy",
+    "docker_context": "",
+    "auto_start": true
+  },
+  "staging": {
+    "base_url": "https://staging.example.com",
+    "release_tag": "v0.1.92-rc.2",
+    "uat_user_email": "uat-user@example.com",
+    "uat_user_password": "REPLACE_ME",
+    "drill_api_key": ""
+  },
+  "network": {
+    "public_domain": "staging.example.com",
+    "tls_termination": "reverse_proxy"
+  }
+}
