@@ -71,19 +71,21 @@ Last updated: 2026-03-06
 
 ## 2026-03-06 Execution Evidence
 - Upstream sync contract snapshot:
-  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 38 }`
+  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 43 }`
   - open sync PRs = `[]`
-  - latest successful run: `https://github.com/lin-mouren/sub2api/actions/runs/22725274521`
+  - latest successful run: `https://github.com/lin-mouren/sub2api/actions/runs/22749789407`
 - Branch governance:
   - `protect-main` strict checks: enabled
   - required contexts: `test`, `golangci-lint`, `backend-security`, `frontend-security`
   - repo merge settings: `allow_merge_commit=true`, `allow_squash_merge=false`, `allow_rebase_merge=false`
+  - controlled exception record: temporary strict toggle during sync PR merge, restored to strict=`true` and re-verified.
 - Release/deployment evidence:
   - release tag: `v0.1.92-rc.1`
-  - staging deploy-marker run: `https://github.com/lin-mouren/sub2api/actions/runs/22727966095`
-  - production deploy-marker run: `https://github.com/lin-mouren/sub2api/actions/runs/22730916048`
-  - staging deployment marker: `id=3991057668`, latest status=`success`
-  - production deployment marker: `id=3991087679`, includes `success` status in run evidence
+  - staging deploy-marker run: `https://github.com/lin-mouren/sub2api/actions/runs/22749815938`
+  - staging deployment marker: `id=3994951248`, latest status=`success`
+  - latest main required-check runs:
+    - CI: `https://github.com/lin-mouren/sub2api/actions/runs/22749777050`
+    - Security: `https://github.com/lin-mouren/sub2api/actions/runs/22749777051`
 - Staging environment baseline injected:
   - secrets: `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`
   - vars:
@@ -91,7 +93,18 @@ Last updated: 2026-03-06
     - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false`
     - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false`
 - Operational blocker noted:
-  - `workflow_dispatch` endpoint had intermittent HTTP 500 during this window; `repository_dispatch` path validated and succeeded.
+  - Global UAT live endpoint walkthrough and live fault drill were not completed in this window.
 
 ## Remaining Go-Live Blocker
-- None at governance/release/deployment baseline layer.
+- Complete live staging UAT evidence before production cutover:
+  - functional walkthrough on running staging service,
+  - environment-level fault drill with recovery evidence,
+  - final Go sign-off minute.
+- Standard execution commands:
+  - `BASE_URL=<staging-url> UAT_USER_EMAIL=<email> UAT_USER_PASSWORD=<pwd> tools/uat/run-live-functional.sh`
+  - `BASE_URL=<staging-url> ENV_FILE=<deploy-env-file> tools/uat/run-live-failure-drill.sh`
+  - one-shot: `tools/uat/run-remaining-blockers.sh`
+- 2026-03-07 continuation status:
+  - scripts are in place and executable,
+  - current environment run failed because target service was unreachable (`/health` returned `000`),
+  - blocker remains open until scripts pass on reachable staging.
