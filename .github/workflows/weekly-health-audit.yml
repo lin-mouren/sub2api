@@ -51,10 +51,10 @@ jobs:
             latest_release_url="$(jq -r '.url // "n/a"' <<<"${release_view_json}")"
           fi
 
-          approvals="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count)' | head -n1)"
-          strict="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="required_status_checks") | .parameters.strict_required_status_checks_policy)' | head -n1)"
-          merge_methods="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="pull_request") | .parameters.allowed_merge_methods | join(","))' | head -n1)"
-          required_checks="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks | map(.context) | join(", "))' | head -n1)"
+          approvals="$(gh api "repos/${REPO}/rulesets" --jq 'first(.[] | select(.name=="protect-main") | .rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count) // "n/a"')"
+          strict="$(gh api "repos/${REPO}/rulesets" --jq 'first(.[] | select(.name=="protect-main") | .rules[] | select(.type=="required_status_checks") | .parameters.strict_required_status_checks_policy) // "n/a"')"
+          merge_methods="$(gh api "repos/${REPO}/rulesets" --jq 'first(.[] | select(.name=="protect-main") | .rules[] | select(.type=="pull_request") | (.parameters.allowed_merge_methods // [] | join(","))) // "n/a"')"
+          required_checks="$(gh api "repos/${REPO}/rulesets" --jq 'first(.[] | select(.name=="protect-main") | .rules[] | select(.type=="required_status_checks") | (.parameters.required_status_checks // [] | map(.context) | join(", "))) // "n/a"')"
 
           sync_runs="$(gh run list --repo "${REPO}" --workflow upstream-sync.yml --limit 5 --json databaseId,conclusion,createdAt,url --jq '.[] | "- run `\(.databaseId)` | \(.conclusion // "in_progress") | \(.createdAt) | [link](\(.url))"')"
           deploy_runs="$(gh run list --repo "${REPO}" --workflow deploy-marker.yml --limit 5 --json databaseId,conclusion,createdAt,url --jq '.[] | "- run `\(.databaseId)` | \(.conclusion // "in_progress") | \(.createdAt) | [link](\(.url))"')"
