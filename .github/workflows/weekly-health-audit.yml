@@ -41,11 +41,15 @@ jobs:
           open_pr_count="$(gh pr list --repo "${REPO}" --state open --json number --jq 'length')"
           open_sync_pr_count="$(gh pr list --repo "${REPO}" --state open --base main --json headRefName --jq '[ .[] | select(.headRefName=="mirror/upstream-main" or (.headRefName|startswith("sync/upstream-main-"))) ] | length')"
 
-          latest_release_json="$(gh release list --repo "${REPO}" --limit 1 --json tagName,name,url,publishedAt,isPrerelease)"
+          latest_release_json="$(gh release list --repo "${REPO}" --limit 1 --json tagName,name,publishedAt,isPrerelease)"
           latest_tag="$(jq -r '.[0].tagName // "n/a"' <<<"${latest_release_json}")"
-          latest_release_url="$(jq -r '.[0].url // "n/a"' <<<"${latest_release_json}")"
           latest_release_time="$(jq -r '.[0].publishedAt // "n/a"' <<<"${latest_release_json}")"
           latest_release_prerelease="$(jq -r '.[0].isPrerelease // "n/a"' <<<"${latest_release_json}")"
+          latest_release_url="n/a"
+          if [ "${latest_tag}" != "n/a" ]; then
+            release_view_json="$(gh release view "${latest_tag}" --repo "${REPO}" --json url 2>/dev/null || echo '{}')"
+            latest_release_url="$(jq -r '.url // "n/a"' <<<"${release_view_json}")"
+          fi
 
           approvals="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="pull_request") | .parameters.required_approving_review_count)' | head -n1)"
           strict="$(gh api "repos/${REPO}/rulesets" --jq '.[] | select(.name=="protect-main") | (.rules[] | select(.type=="required_status_checks") | .parameters.strict_required_status_checks_policy)' | head -n1)"
