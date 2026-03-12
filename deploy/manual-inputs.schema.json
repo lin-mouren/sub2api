@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SUB2api Manual Inputs",
+  "type": "object",
+  "required": [
+    "github",
+    "deployment",
+    "staging"
+  ],
+  "properties": {
+    "github": {
+      "type": "object",
+      "required": [
+        "repository",
+        "staging_environment",
+        "production_environment"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "staging_environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "production_environment": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment": {
+      "type": "object",
+      "required": [
+        "compose_file",
+        "env_file",
+        "auto_start"
+      ],
+      "properties": {
+        "compose_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "working_directory": {
+          "type": "string"
+        },
+        "docker_context": {
+          "type": "string"
+        },
+        "auto_start": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "staging": {
+      "type": "object",
+      "required": [
+        "base_url"
+      ],
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "release_tag": {
+          "type": "string"
+        },
+        "uat_user_email": {
+          "type": "string"
+        },
+        "uat_user_password": {
+          "type": "string"
+        },
+        "drill_api_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "public_domain": {
+          "type": "string"
+        },
+        "tls_termination": {
+          "type": "string",
+          "enum": [
+            "reverse_proxy",
+            "edge",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

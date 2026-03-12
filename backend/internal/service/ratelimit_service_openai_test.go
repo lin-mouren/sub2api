@@ -1,6 +1,9 @@
+//go:build unit
+
 package service
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -26,13 +29,14 @@ func TestCalculateOpenAI429ResetTime_7dExhausted(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should be approximately 384607 seconds from now
 	expectedDuration := 384607 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -56,13 +60,14 @@ func TestCalculateOpenAI429ResetTime_5hExhausted(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should be approximately 3600 seconds from now
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -86,13 +91,14 @@ func TestCalculateOpenAI429ResetTime_NeitherExhausted_UsesMax(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should use the max (100000 seconds from 7d window)
 	expectedDuration := 100000 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -130,14 +136,60 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should correctly identify that primary is 5h (smaller window) and use its reset time
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
+	}
+}
+
+type openAI429SnapshotRepo struct {
+	mockAccountRepoForGemini
+	rateLimitedID int64
+	updatedExtra  map[string]any
+}
+
+func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
+	r.rateLimitedID = id
+	return nil
+}
+
+func (r *openAI429SnapshotRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updatedExtra = updates
+	return nil
+}
+
+func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "604800")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	headers.Set("x-codex-secondary-used-percent", "100")
+	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
+	headers.Set("x-codex-secondary-window-minutes", "300")
+
+	svc.handle429(context.Background(), account, headers, nil)
+
+	if repo.rateLimitedID != account.ID {
+		t.Fatalf("rateLimitedID = %d, want %d", repo.rateLimitedID, account.ID)
+	}
+	if len(repo.updatedExtra) == 0 {
+		t.Fatal("expected codex snapshot to be persisted on 429")
+	}
+	if got := repo.updatedExtra["codex_5h_used_percent"]; got != 100.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 100", got)
+	}
+	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
 }
 
@@ -323,18 +375,19 @@ func TestCalculateOpenAI429ResetTime_UserProvidedScenario(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt for user scenario")
 	}
+	resetAtValue := *resetAt
 
 	// Should use the 7d reset time (384607 seconds) since 7d limit is exhausted (100%)
 	expectedDuration := 384607 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 
 	// Verify it's approximately 4.45 days (384607 seconds)
-	duration := resetAt.Sub(before)
+	duration := resetAtValue.Sub(before)
 	actualDays := duration.Hours() / 24.0
 
 	// 384607 / 86400 = ~4.45 days

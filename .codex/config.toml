@@ -1,0 +1,14 @@
+# Project-level Codex settings for this repo.
+#
+# WARNING:
+# - approval_policy="never" means Codex will not ask before executing actions that would normally
+#   require your confirmation. Use only in repos you fully trust.
+# - Keep the sandbox boundary (workspace-write) to retain some guardrails.
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+
+[sandbox_workspace_write]
+# Default to no network; you can temporarily enable it per-run with:
+#   codex -c sandbox_workspace_write.network_access=true
+network_access = false

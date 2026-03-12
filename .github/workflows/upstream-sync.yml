@@ -49,10 +49,36 @@ jobs:
             git checkout -B mirror/upstream-main upstream/main
           fi
 
+          if git merge-base --is-ancestor HEAD upstream/main; then
+            echo "mirror/upstream-main can be fast-forwarded to upstream/main"
+          elif git merge-base --is-ancestor upstream/main HEAD; then
+            echo "::error::origin/mirror/upstream-main contains commits that are not in upstream/main; mirror branch is polluted and requires break-glass realignment."
+            echo "Mirror-only commits:"
+            git log --oneline upstream/main..HEAD | sed -n '1,20p'
+            {
+              echo "### Mirror Sync Blocked"
+              echo "- state: polluted"
+              echo "- reason: origin/mirror/upstream-main is ahead of upstream/main"
+              echo "- required_action: break-glass realignment using force-with-lease outside automation"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          else
+            echo "::error::origin/mirror/upstream-main and upstream/main have diverged; manual break-glass realignment is required."
+            echo "Divergence summary:"
+            git log --oneline --left-right --cherry-pick HEAD...upstream/main | sed -n '1,40p'
+            {
+              echo "### Mirror Sync Blocked"
+              echo "- state: diverged"
+              echo "- reason: origin/mirror/upstream-main and upstream/main are not in a fast-forward relationship"
+              echo "- required_action: inspect history and realign mirror manually"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+
           git merge --ff-only upstream/main
           git push origin HEAD:refs/heads/mirror/upstream-main
 
-      - name: Upsert sync PR (mirror/upstream-main -> main)
+      - name: Upsert sync PR (sync/* -> main)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -69,9 +95,46 @@ jobs:
             exit 0
           fi
 
-          get_existing_pr() {
-            gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
-              --jq '.[] | select(.head.ref=="mirror/upstream-main") | .number' | head -n 1
+          close_prs_by_head() {
+            local head_ref="$1"
+            local prs
+            prs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
+              --jq ".[] | select(.head.ref==\"${head_ref}\") | .number")"
+            if [ -z "${prs}" ]; then
+              return 0
+            fi
+            while IFS= read -r pr_number; do
+              if [ -z "${pr_number}" ]; then
+                continue
+              fi
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" -f state=closed >/dev/null
+              gh api "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                -f body="Closed by upstream-sync automation: this PR head is no longer the active sync source." >/dev/null
+              echo "Closed stale PR #${pr_number} (head=${head_ref})"
+            done <<< "${prs}"
+          }
+
+          close_prs_by_prefix() {
+            local prefix="$1"
+            local keep_head="${2:-}"
+            local prs
+            prs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
+              --jq ".[] | select(.head.ref | startswith(\"${prefix}\")) | [.number, .head.ref] | @tsv")"
+            if [ -z "${prs}" ]; then
+              return 0
+            fi
+            while IFS=$'\t' read -r pr_number pr_head; do
+              if [ -z "${pr_number}" ]; then
+                continue
+              fi
+              if [ -n "${keep_head}" ] && [ "${pr_head}" = "${keep_head}" ]; then
+                continue
+              fi
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" -f state=closed >/dev/null
+              gh api "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                -f body="Closed by upstream-sync automation: replaced by a newer sync branch PR." >/dev/null
+              echo "Closed stale sync PR #${pr_number} (${pr_head})"
+            done <<< "${prs}"
           }
 
           compare_endpoint="repos/${GITHUB_REPOSITORY}/compare/main...mirror%2Fupstream-main"
@@ -114,36 +177,46 @@ jobs:
             echo "- main_base_sha: ${base_sha}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          existing_pr="$(get_existing_pr)"
+          existing_sync_tsv="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
+              --jq '.[] | select(.head.ref | startswith("sync/upstream-main-")) | [.number, .head.ref] | @tsv' | head -n 1
+          )"
+          existing_sync_pr=""
+          existing_sync_branch=""
+          if [ -n "${existing_sync_tsv}" ]; then
+            IFS=$'\t' read -r existing_sync_pr existing_sync_branch <<< "${existing_sync_tsv}"
+          fi
+
           if [ "${ahead_by}" -eq 0 ]; then
-            if [ -n "${existing_pr}" ]; then
-              pr_state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" --jq '.state' 2>/dev/null || true)"
-              if [ "${pr_state}" = "open" ]; then
-                gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${existing_pr}" -f state=closed >/dev/null
-                gh api "repos/${GITHUB_REPOSITORY}/issues/${existing_pr}/comments" \
-                  -f body="main already contains mirror/upstream-main; closing this sync PR." >/dev/null
-                echo "Closed obsolete sync PR #${existing_pr}"
-              else
-                echo "Sync PR #${existing_pr} is already ${pr_state:-unknown}; skip close."
-              fi
-            else
-              echo "No sync PR needed: mirror is not ahead of main."
-            fi
+            close_prs_by_head "mirror/upstream-main"
+            close_prs_by_prefix "sync/upstream-main-"
+            echo "No sync PR needed: mirror is not ahead of main."
             exit 0
           fi
 
-          pr_number="${existing_pr}"
-          if [ -z "${pr_number}" ]; then
+          close_prs_by_head "mirror/upstream-main"
+
+          sync_branch="${existing_sync_branch}"
+          pr_number="${existing_sync_pr}"
+          if [ -z "${sync_branch}" ]; then
+            sync_branch="sync/upstream-main-$(date +%Y%m%d%H%M%S)"
+            git checkout -B "${sync_branch}" origin/main
+            git merge --no-ff --no-edit origin/mirror/upstream-main
+            git push origin "${sync_branch}:${sync_branch}"
             if pr_number="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" \
               -f title="chore(upstream): sync Wei-Shaw/sub2api main" \
-              -f head="mirror/upstream-main" \
+              -f head="${sync_branch}" \
               -f base="main" \
-              -f body="Automated upstream sync PR from mirror/upstream-main to main." \
+              -f body="Automated upstream sync PR from ${sync_branch} to main (mirror remains pure FF)." \
               --jq '.number' 2>/tmp/upstream-pr-create.err)"; then
               echo "Created sync PR #${pr_number}"
             else
               if grep -q "A pull request already exists" /tmp/upstream-pr-create.err; then
-                pr_number="$(get_existing_pr)"
+                existing_sync_tsv="$(
+                  gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
+                    --jq '.[] | select(.head.ref | startswith("sync/upstream-main-")) | [.number, .head.ref] | @tsv' | head -n 1
+                )"
+                IFS=$'\t' read -r pr_number sync_branch <<< "${existing_sync_tsv}"
                 echo "Detected existing sync PR #${pr_number} after create race."
               else
                 echo "::error::failed to create sync PR"
@@ -152,17 +225,24 @@ jobs:
               fi
             fi
           else
+            git fetch origin "+refs/heads/${sync_branch}:refs/remotes/origin/${sync_branch}" --prune || true
+            git checkout -B "${sync_branch}" "origin/${sync_branch}"
+            git reset --hard origin/main
+            git merge --no-ff --no-edit origin/mirror/upstream-main
+            git push origin "${sync_branch}:${sync_branch}" --force-with-lease
             echo "Reusing open sync PR #${pr_number}"
           fi
+          close_prs_by_prefix "sync/upstream-main-" "${sync_branch}"
 
-          if [ "${ahead_by}" -gt 0 ] && [ -z "${pr_number}" ]; then
-            echo "::error::mirror is ahead of main (ahead_by=${ahead_by}) but no sync PR exists"
+          if [ "${ahead_by}" -gt 0 ] && { [ -z "${pr_number}" ] || [ -z "${sync_branch}" ]; }; then
+            echo "::error::mirror is ahead of main (ahead_by=${ahead_by}) but sync PR upsert failed"
             exit 1
           fi
 
           echo "sync_pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
           {
             echo "- sync_pr: #${pr_number}"
+            echo "- sync_branch: ${sync_branch}"
             echo "- action: upserted"
           } >> "${GITHUB_STEP_SUMMARY}"
 
