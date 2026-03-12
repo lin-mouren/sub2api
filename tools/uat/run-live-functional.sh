@@ -102,11 +102,13 @@ register_body="$TMP_DIR/register.json"
 cat > "$register_body" <<EOF
 {"email":"$UAT_USER_EMAIL","password":"$UAT_USER_PASSWORD","username":"$UAT_USER_NAME"}
 EOF
-register_code="$(call_api "POST" "/api/auth/register" "" "$register_body" | head -n1)"
+register_resp="$TMP_DIR/register.out"
+call_api "POST" "/api/v1/auth/register" "" "$register_body" > "$register_resp"
+register_code="$(sed -n '1p' "$register_resp")"
 if [[ "$register_code" == "200" || "$register_code" == "400" || "$register_code" == "403" ]]; then
-  log_step "UAT-F-REGISTER" "PASS" "POST /api/auth/register returned $register_code"
+  log_step "UAT-F-REGISTER" "PASS" "POST /api/v1/auth/register returned $register_code"
 else
-  log_step "UAT-F-REGISTER" "WARN" "POST /api/auth/register returned $register_code"
+  log_step "UAT-F-REGISTER" "WARN" "POST /api/v1/auth/register returned $register_code"
 fi
 
 # UAT-F-LOGIN
@@ -115,29 +117,29 @@ cat > "$login_body" <<EOF
 {"email":"$UAT_USER_EMAIL","password":"$UAT_USER_PASSWORD"}
 EOF
 login_resp="$TMP_DIR/login.out"
-call_api "POST" "/api/auth/login" "" "$login_body" > "$login_resp"
+call_api "POST" "/api/v1/auth/login" "" "$login_body" > "$login_resp"
 login_code="$(head -n1 "$login_resp")"
 tail -n +2 "$login_resp" > "$TMP_DIR/login.json.out"
 access_token="$(extract_access_token "$TMP_DIR/login.json.out")"
 if [[ "$login_code" != "200" || -z "$access_token" ]]; then
-  log_step "UAT-F-LOGIN" "FAIL" "POST /api/auth/login returned $login_code (token missing)"
+  log_step "UAT-F-LOGIN" "FAIL" "POST /api/v1/auth/login returned $login_code (token missing)"
   echo "functional walkthrough failed: login failed"
   echo "evidence: $OUT_MD"
   exit 1
 fi
-log_step "UAT-F-LOGIN" "PASS" "POST /api/auth/login returned 200 (token length=${#access_token})"
+log_step "UAT-F-LOGIN" "PASS" "POST /api/v1/auth/login returned 200 (token length=${#access_token})"
 
 # UAT-F-ME
 me_resp="$TMP_DIR/me.out"
-call_api "GET" "/api/user/me" "$access_token" > "$me_resp"
+call_api "GET" "/api/v1/auth/me" "$access_token" > "$me_resp"
 me_code="$(head -n1 "$me_resp")"
 if [[ "$me_code" != "200" ]]; then
-  log_step "UAT-F-ME" "FAIL" "GET /api/user/me returned $me_code"
-  echo "functional walkthrough failed: /api/user/me failed"
+  log_step "UAT-F-ME" "FAIL" "GET /api/v1/auth/me returned $me_code"
+  echo "functional walkthrough failed: /api/v1/auth/me failed"
   echo "evidence: $OUT_MD"
   exit 1
 fi
-log_step "UAT-F-ME" "PASS" "GET /api/user/me returned 200"
+log_step "UAT-F-ME" "PASS" "GET /api/v1/auth/me returned 200"
 
 # UAT-F-CREATE-KEY
 key_body="$TMP_DIR/key.json"
@@ -145,20 +147,22 @@ cat > "$key_body" <<EOF
 {"name":"uat-key-$(date +%s)"}
 EOF
 key_resp="$TMP_DIR/key.out"
-call_api "POST" "/api/keys" "$access_token" "$key_body" > "$key_resp"
+call_api "POST" "/api/v1/keys" "$access_token" "$key_body" > "$key_resp"
 key_code="$(head -n1 "$key_resp")"
 tail -n +2 "$key_resp" > "$TMP_DIR/key.json.out"
 api_key="$(extract_api_key "$TMP_DIR/key.json.out")"
 if [[ "$key_code" != "200" || -z "$api_key" ]]; then
-  log_step "UAT-F-CREATE-KEY" "FAIL" "POST /api/keys returned $key_code (key missing)"
+  log_step "UAT-F-CREATE-KEY" "FAIL" "POST /api/v1/keys returned $key_code (key missing)"
   echo "functional walkthrough failed: api key creation failed"
   echo "evidence: $OUT_MD"
   exit 1
 fi
-log_step "UAT-F-CREATE-KEY" "PASS" "POST /api/keys returned 200 (key length=${#api_key})"
+log_step "UAT-F-CREATE-KEY" "PASS" "POST /api/v1/keys returned 200 (key length=${#api_key})"
 
 # UAT-F-MODELS
-models_code="$(call_api "GET" "/v1/models" "$api_key" "" | head -n1)"
+models_resp="$TMP_DIR/models.out"
+call_api "GET" "/v1/models" "$api_key" "" > "$models_resp"
+models_code="$(sed -n '1p' "$models_resp")"
 if [[ "$models_code" == "200" || "$models_code" == "402" || "$models_code" == "403" ]]; then
   log_step "UAT-F-MODELS" "PASS" "GET /v1/models returned $models_code"
 else
@@ -166,11 +170,13 @@ else
 fi
 
 # UAT-F-USAGE
-usage_code="$(call_api "GET" "/api/usage/dashboard" "$access_token" "" | head -n1)"
+usage_resp="$TMP_DIR/usage.out"
+call_api "GET" "/api/v1/usage/dashboard/stats" "$access_token" "" > "$usage_resp"
+usage_code="$(sed -n '1p' "$usage_resp")"
 if [[ "$usage_code" == "200" ]]; then
-  log_step "UAT-F-USAGE" "PASS" "GET /api/usage/dashboard returned 200"
+  log_step "UAT-F-USAGE" "PASS" "GET /api/v1/usage/dashboard/stats returned 200"
 else
-  log_step "UAT-F-USAGE" "WARN" "GET /api/usage/dashboard returned $usage_code"
+  log_step "UAT-F-USAGE" "WARN" "GET /api/v1/usage/dashboard/stats returned $usage_code"
 fi
 
 echo "functional walkthrough completed"
