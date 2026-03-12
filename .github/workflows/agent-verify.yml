@@ -1,0 +1,21 @@
+name: Agent Verify
+
+on:
+  push:
+    branches-ignore:
+      - mirror/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Verify Codex control plane
+        run: node tools/agent-loop/orchestrate.mjs verify

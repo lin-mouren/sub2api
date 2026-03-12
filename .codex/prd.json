@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "project": "SUB2api",
+  "updated_at": "2026-03-12T01:19:51.075Z",
+  "tasks": [
+    {
+      "id": "CTRL-001",
+      "title": "Codex control-plane files exist and are readable",
+      "status": "done",
+      "priority": 1,
+      "depends_on": [],
+      "handler": "verify_control_plane",
+      "validator": "verify_control_plane",
+      "role": "orchestrator",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:31:43.354Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "CTRL-002",
+      "title": "Agent loop CLI can plan, verify, and report",
+      "status": "done",
+      "priority": 2,
+      "depends_on": [
+        "CTRL-001"
+      ],
+      "handler": "verify_orchestrator",
+      "validator": "verify_orchestrator",
+      "role": "orchestrator",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:31:51.006Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "GATE-001",
+      "title": "Governance workflow validates Codex control-plane files",
+      "status": "done",
+      "priority": 3,
+      "depends_on": [
+        "CTRL-002"
+      ],
+      "handler": "verify_gate_workflow",
+      "validator": "verify_gate_workflow",
+      "role": "validator",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:31:57.951Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "SYNC-001",
+      "title": "Upstream sync uses sync branches instead of mirror PRs",
+      "status": "done",
+      "priority": 4,
+      "depends_on": [
+        "CTRL-002"
+      ],
+      "handler": "verify_sync_workflow",
+      "validator": "verify_sync_workflow",
+      "role": "devops",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:32:04.699Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "REL-001",
+      "title": "Release automation has a traceable RC release baseline",
+      "status": "done",
+      "priority": 5,
+      "depends_on": [
+        "SYNC-001"
+      ],
+      "handler": "verify_release_baseline",
+      "validator": "verify_release_baseline",
+      "role": "release",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:32:11.316Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "DEPLOY-001",
+      "title": "Deployment inputs are available for compose and health checks",
+      "status": "done",
+      "priority": 6,
+      "depends_on": [
+        "CTRL-002"
+      ],
+      "handler": "check_manual_inputs",
+      "validator": "check_manual_inputs",
+      "role": "devops",
+      "attempts": 2,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:32:17.627Z",
+          "status": "manual_blocker",
+          "reason": "Missing deploy/manual-inputs.local.json",
+          "notes": ""
+        },
+        {
+          "timestamp": "2026-03-12T01:18:17.626Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "UAT-001",
+      "title": "Live functional and failure-drill UAT can execute and persist evidence",
+      "status": "done",
+      "priority": 7,
+      "depends_on": [
+        "DEPLOY-001"
+      ],
+      "handler": "run_live_uat",
+      "validator": "run_live_uat",
+      "role": "qa",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-12T01:19:44.762Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    },
+    {
+      "id": "REPORT-001",
+      "title": "Generate final status report with only actionable blockers",
+      "status": "done",
+      "priority": 8,
+      "depends_on": [
+        "CTRL-001",
+        "CTRL-002",
+        "GATE-001",
+        "SYNC-001",
+        "REL-001",
+        "DEPLOY-001",
+        "UAT-001"
+      ],
+      "handler": "generate_report",
+      "validator": "generate_report",
+      "role": "orchestrator",
+      "attempts": 1,
+      "history": [
+        {
+          "timestamp": "2026-03-11T17:32:24.451Z",
+          "status": "done",
+          "reason": "",
+          "notes": ""
+        }
+      ],
+      "reason": "",
+      "notes": ""
+    }
+  ]
+}

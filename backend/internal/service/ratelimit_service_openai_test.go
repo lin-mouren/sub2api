@@ -29,13 +29,14 @@ func TestCalculateOpenAI429ResetTime_7dExhausted(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should be approximately 384607 seconds from now
 	expectedDuration := 384607 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -59,13 +60,14 @@ func TestCalculateOpenAI429ResetTime_5hExhausted(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should be approximately 3600 seconds from now
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -89,13 +91,14 @@ func TestCalculateOpenAI429ResetTime_NeitherExhausted_UsesMax(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should use the max (100000 seconds from 7d window)
 	expectedDuration := 100000 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -133,13 +136,14 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt")
 	}
+	resetAtValue := *resetAt
 
 	// Should correctly identify that primary is 5h (smaller window) and use its reset time
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 }
@@ -371,18 +375,19 @@ func TestCalculateOpenAI429ResetTime_UserProvidedScenario(t *testing.T) {
 	if resetAt == nil {
 		t.Fatal("expected non-nil resetAt for user scenario")
 	}
+	resetAtValue := *resetAt
 
 	// Should use the 7d reset time (384607 seconds) since 7d limit is exhausted (100%)
 	expectedDuration := 384607 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
 
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
+	if resetAtValue.Before(minExpected) || resetAtValue.After(maxExpected) {
 		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
 	}
 
 	// Verify it's approximately 4.45 days (384607 seconds)
-	duration := resetAt.Sub(before)
+	duration := resetAtValue.Sub(before)
 	actualDays := duration.Hours() / 24.0
 
 	// 384607 / 86400 = ~4.45 days
