@@ -131,3 +131,5 @@ Last updated: 2026-03-12
 - Status: **Closed (2026-03-12)**
 - Final decision and sign-off minute:
   - `docs/go-no-go-signoff-20260312.md`
+- Post-release health audit:
+  - `docs/post-release-health-audit-20260312.md`
