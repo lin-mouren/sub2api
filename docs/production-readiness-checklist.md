@@ -1,6 +1,6 @@
 # SUB2api Production Readiness Checklist
 
-Last updated: 2026-03-06
+Last updated: 2026-03-12
 
 ## Scope
 - Deployment model: Docker Compose (`deploy/docker-compose.local.yml`) + reverse proxy TLS.
@@ -108,3 +108,26 @@ Last updated: 2026-03-06
   - scripts are in place and executable,
   - current environment run failed because target service was unreachable (`/health` returned `000`),
   - blocker remains open until scripts pass on reachable staging.
+
+## 2026-03-12 Final Closure Evidence
+- Release closure:
+  - release tag: `v0.1.92-rc.3`
+  - release url: `https://github.com/lin-mouren/sub2api/releases/tag/v0.1.92-rc.3`
+  - release workflow run: `https://github.com/lin-mouren/sub2api/actions/runs/22993093721` (`success`)
+- Deploy marker closure:
+  - staging run: `https://github.com/lin-mouren/sub2api/actions/runs/22993400137` (`success`)
+  - staging deployment: `id=4048343284`, `ref=v0.1.92-rc.3`
+  - production run: `https://github.com/lin-mouren/sub2api/actions/runs/22993540931` (`success`)
+  - production deployment: `id=4048366966`, `ref=v0.1.92-rc.3`, `production_environment=true`
+- Upstream sync health:
+  - latest runs: `22993008500`, `22992059459`, `22991329248` (all `success`)
+  - compare(`main...mirror/upstream-main`) = `{ "status": "behind", "ahead_by": 0, "behind_by": 68 }`
+  - open sync PRs: `[]`
+- Branch governance (re-verified):
+  - `protect-main`: approvals `=1`, strict checks `=true`, merge method `merge` only.
+  - repo merge settings: `allow_merge_commit=true`, `allow_squash_merge=false`, `allow_rebase_merge=false`.
+
+## Go-Live Blocker Status
+- Status: **Closed (2026-03-12)**
+- Final decision and sign-off minute:
+  - `docs/go-no-go-signoff-20260312.md`

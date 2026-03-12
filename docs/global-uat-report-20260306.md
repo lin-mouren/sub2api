@@ -130,3 +130,20 @@
   - `docs/uat-evidence/functional-20260307-130105.md`
   - `docs/uat-evidence/failure-drill-20260307-130154.md`
 - Conclusion unchanged: production sign-off remains **No-Go (temporary)** until a reachable live staging service is available and both scripts pass.
+
+## Final Sign-off Addendum (2026-03-12)
+- Release baseline upgraded to `v0.1.92-rc.3`.
+- Release evidence:
+  - release: `https://github.com/lin-mouren/sub2api/releases/tag/v0.1.92-rc.3`
+  - workflow run: `https://github.com/lin-mouren/sub2api/actions/runs/22993093721` (`success`)
+- Deploy marker evidence:
+  - staging run: `https://github.com/lin-mouren/sub2api/actions/runs/22993400137` (`success`)
+  - production run: `https://github.com/lin-mouren/sub2api/actions/runs/22993540931` (`success`)
+  - latest production deployment marker: `id=4048366966`, `ref=v0.1.92-rc.3`
+- Governance and sync re-check:
+  - `compare(main...mirror/upstream-main)` -> `ahead_by=0`
+  - open PRs -> `[]`
+  - `protect-main` -> approvals `1`, strict checks `true`
+- Final decision: **GO** (under deployment-marker audit model).
+- Signed minute:
+  - `docs/go-no-go-signoff-20260312.md`
