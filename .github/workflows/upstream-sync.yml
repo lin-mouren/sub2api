@@ -137,6 +137,27 @@ jobs:
             done <<< "${prs}"
           }
 
+          ensure_conflict_comment() {
+            local pr_number="$1"
+            local marker="<!-- upstream-sync:manual-conflict-resolution-required -->"
+            local body
+            body="${marker}
+
+          Upstream sync automation detected a merge conflict while refreshing this existing \`sync/* -> main\` PR.
+
+          - Cause: \`main\` changed after this sync PR was opened, and replaying \`origin/mirror/upstream-main\` onto the latest \`origin/main\` now conflicts.
+          - Action required: resolve conflicts manually in this PR branch or replace it with a new conflict-resolved sync PR.
+          - Automation behavior: existing sync PR preserved; no force-reset or auto-close performed."
+
+            if gh api --method GET "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments?per_page=100" \
+              --jq ".[] | select(.body | contains(\"${marker}\")) | .id" | grep -q .; then
+              return 0
+            fi
+
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+              -f body="${body}" >/dev/null
+          }
+
           compare_endpoint="repos/${GITHUB_REPOSITORY}/compare/main...mirror%2Fupstream-main"
           compare_tsv=""
           for attempt in 1 2 3 4 5; do
@@ -226,10 +247,21 @@ jobs:
             fi
           else
             git fetch origin "+refs/heads/${sync_branch}:refs/remotes/origin/${sync_branch}" --prune || true
-            git checkout -B "${sync_branch}" "origin/${sync_branch}"
-            git reset --hard origin/main
-            git merge --no-ff --no-edit origin/mirror/upstream-main
-            git push origin "${sync_branch}:${sync_branch}" --force-with-lease
+            refresh_branch="codex-sync-refresh-${sync_branch##*/}"
+            git checkout -B "${refresh_branch}" origin/main
+            if ! git merge --no-ff --no-edit origin/mirror/upstream-main; then
+              {
+                echo "### Upstream Sync Refresh"
+                echo "- state: manual_conflict_resolution_required"
+                echo "- sync_pr: #${pr_number}"
+                echo "- sync_branch: ${sync_branch}"
+                echo "- reason: refreshing existing sync PR onto latest main produced merge conflicts"
+              } >> "${GITHUB_STEP_SUMMARY}"
+              ensure_conflict_comment "${pr_number}"
+              echo "Existing sync PR #${pr_number} requires manual conflict resolution; leaving branch unchanged."
+              exit 0
+            fi
+            git push origin "HEAD:${sync_branch}" --force-with-lease
             echo "Reusing open sync PR #${pr_number}"
           fi
           close_prs_by_prefix "sync/upstream-main-" "${sync_branch}"
