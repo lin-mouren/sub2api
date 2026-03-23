@@ -1,7 +1,7 @@
 # Weekly Post-Release Health Audit Snapshot
 
-Generated at (UTC): 2026-03-17T04:44:35Z
-Generated at (Asia/Shanghai): 2026-03-17 12:44:35 CST
+Generated at (UTC): 2026-03-23T01:59:00Z
+Generated at (Asia/Shanghai): 2026-03-23 09:59:00 CST
 Repository: lin-mouren/sub2api
 
 ## Summary
@@ -11,15 +11,15 @@ Repository: lin-mouren/sub2api
 - open sync PR count: 0
 
 ## Upstream Sync Health
-- compare(main...mirror/upstream-main): status=diverged, ahead_by=114, behind_by=82
-- base commit sha: a3e879eddf839f3394cd531cb9bee223b0dade9c
+- compare(main...mirror/upstream-main): status=diverged, ahead_by=161, behind_by=85
+- base commit sha: cb028c0e2c6d27b7a3f2cc77b5ae9e981cc72ece
 
 ### Recent Upstream Sync Runs
-- run `23177849909` | failure | 2026-03-17T04:03:48Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23177849909)
-- run `23176709488` | failure | 2026-03-17T03:14:31Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23176709488)
-- run `23174761437` | failure | 2026-03-17T01:55:13Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23174761437)
-- run `23173104853` | failure | 2026-03-17T00:50:25Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23173104853)
-- run `23170716148` | failure | 2026-03-16T23:25:40Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23170716148)
+- run `23418118397` | failure | 2026-03-23T01:55:11Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23418118397)
+- run `23416829212` | failure | 2026-03-23T00:55:28Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23416829212)
+- run `23415043289` | failure | 2026-03-22T23:24:52Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23415043289)
+- run `23413957670` | failure | 2026-03-22T22:24:28Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23413957670)
+- run `23412861123` | failure | 2026-03-22T21:24:58Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23412861123)
 
 ## Deploy Marker Health
 ### Recent Deploy Marker Runs
