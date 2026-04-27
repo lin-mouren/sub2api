@@ -1,25 +1,25 @@
 # Weekly Post-Release Health Audit Snapshot
 
-Generated at (UTC): 2026-03-17T04:44:35Z
-Generated at (Asia/Shanghai): 2026-03-17 12:44:35 CST
+Generated at (UTC): 2026-04-27T01:59:45Z
+Generated at (Asia/Shanghai): 2026-04-27 09:59:45 CST
 Repository: lin-mouren/sub2api
 
 ## Summary
 - latest release tag: v0.1.92-rc.3
 - latest release prerelease: true
-- open PR count: 1
+- open PR count: 9
 - open sync PR count: 0
 
 ## Upstream Sync Health
-- compare(main...mirror/upstream-main): status=diverged, ahead_by=114, behind_by=82
-- base commit sha: a3e879eddf839f3394cd531cb9bee223b0dade9c
+- compare(main...mirror/upstream-main): status=diverged, ahead_by=161, behind_by=85
+- base commit sha: cb028c0e2c6d27b7a3f2cc77b5ae9e981cc72ece
 
 ### Recent Upstream Sync Runs
-- run `23177849909` | failure | 2026-03-17T04:03:48Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23177849909)
-- run `23176709488` | failure | 2026-03-17T03:14:31Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23176709488)
-- run `23174761437` | failure | 2026-03-17T01:55:13Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23174761437)
-- run `23173104853` | failure | 2026-03-17T00:50:25Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23173104853)
-- run `23170716148` | failure | 2026-03-16T23:25:40Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/23170716148)
+- run `24972935620` | failure | 2026-04-27T01:56:02Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/24972935620)
+- run `24971820585` | failure | 2026-04-27T01:07:26Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/24971820585)
+- run `24969736328` | failure | 2026-04-26T23:26:35Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/24969736328)
+- run `24968616401` | failure | 2026-04-26T22:26:20Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/24968616401)
+- run `24967451075` | failure | 2026-04-26T21:26:27Z | [link](https://github.com/lin-mouren/sub2api/actions/runs/24967451075)
 
 ## Deploy Marker Health
 ### Recent Deploy Marker Runs
